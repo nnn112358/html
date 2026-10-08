@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>X Video Downloader</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --text: #16181c; --muted: #6b7280;
+    --border: #e2e5ea; --accent: #1d9bf0; --accent-text: #ffffff;
+    --danger: #dc2626; --ok: #16a34a; --input-bg: #ffffff; --thumb-bg: #e9ecef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1419; --card: #1a2027; --text: #e7e9ea; --muted: #8b98a5;
+      --border: #2f3843; --accent: #1d9bf0; --input-bg: #0f1419; --thumb-bg: #0f1419;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: .95rem; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  form { display: flex; gap: 8px; flex-wrap: wrap; }
+  input[type=url] {
+    flex: 1 1 320px; min-width: 0; padding: 12px 14px; font-size: 1rem;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text);
+  }
+  input[type=url]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button {
+    padding: 12px 18px; font-size: 1rem; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text); cursor: pointer; white-space: nowrap;
+  }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  button:not(:disabled):hover { filter: brightness(1.08); }
+  .status { margin-top: 12px; font-size: .95rem; color: var(--muted); min-height: 1.4em; }
+  .status.error { color: var(--danger); }
+  .status.ok { color: var(--ok); }
+  .tweet { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
+  .tweet img.avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--thumb-bg); }
+  .tweet .name { font-weight: 700; }
+  .tweet .handle { color: var(--muted); font-size: .9rem; margin-left: 6px; }
+  .tweet .text { white-space: pre-wrap; word-break: break-word; margin-top: 4px; }
+  .tweet a { color: var(--accent); text-decoration: none; }
+  .media { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  .item { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: grid; grid-template-columns: 180px 1fr; }
+  @media (max-width: 560px) { .item { grid-template-columns: 1fr; } }
+  .item .thumb { background: var(--thumb-bg); aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; position: relative; }
+  .item .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .item .thumb .dur { position: absolute; right: 6px; bottom: 6px; background: rgba(0,0,0,.7); color: #fff; font-size: .75rem; padding: 2px 6px; border-radius: 4px; }
+  .item .info { padding: 12px 14px; }
+  .item .kind { font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .variants { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .variant { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .variant .label { flex: 1 1 160px; font-size: .95rem; }
+  .variant .meta { color: var(--muted); font-size: .85rem; }
+  .variant .actions { display: flex; gap: 6px; }
+  .variant button { padding: 7px 12px; font-size: .9rem; }
+  progress { width: 100%; height: 8px; margin-top: 8px; accent-color: var(--accent); display: none; }
+  progress.show { display: block; }
+  .hint { font-size: .85rem; color: var(--muted); margin-top: 10px; }
+  details { margin-top: 20px; color: var(--muted); font-size: .9rem; }
+  details summary { cursor: pointer; }
+  code { background: var(--thumb-bg); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>X Video Downloader</h1>
+  <p class="sub">X（旧 Twitter）の投稿 URL を貼り付けると、含まれる動画・GIF を解析して保存できます。</p>
+
+  <div class="card">
+    <form id="form">
+      <input type="url" id="url" placeholder="https://x.com/user/status/1234567890" autocomplete="off" autofocus required>
+      <button type="button" id="paste">貼り付け</button>
+      <button type="submit" class="primary" id="go">解析</button>
+    </form>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card" id="result" hidden>
+    <div class="tweet" id="tweet"></div>
+    <div class="media" id="media"></div>
+    <p class="hint">「保存」はブラウザ内で取得してからダウンロードします。失敗する場合は「開く」で直接リンクを開き、右クリックから「名前を付けて保存」してください。</p>
+  </div>
+
+  <details>
+    <summary>対応 URL と仕組み</summary>
+    <ul>
+      <li><code>x.com</code> / <code>twitter.com</code> / <code>mobile.twitter.com</code> / <code>fxtwitter.com</code> / <code>vxtwitter.com</code> の <code>/status/ID</code> 形式</li>
+      <li>投稿 ID だけの入力（数字のみ）も可</li>
+      <li>解析には公開 API（api.fxtwitter.com、予備として api.vxtwitter.com）を利用します。鍵付き・削除済み投稿は取得できません。</li>
+      <li>ダウンロードするコンテンツの権利は投稿者に帰属します。私的利用の範囲でお使いください。</li>
+    </ul>
+  </details>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const form = $('form'), urlInput = $('url'), statusEl = $('status');
+  const resultEl = $('result'), tweetEl = $('tweet'), mediaEl = $('media');
+  const goBtn = $('go');
+
+  const setStatus = (msg, cls = '') => { statusEl.textContent = msg; statusEl.className = 'status ' + cls; };
+
+  function extractId(input) {
+    const s = input.trim();
+    if (/^\d{5,}$/.test(s)) return s;
+    const m = s.match(/(?:twitter\.com|x\.com|fxtwitter\.com|vxtwitter\.com|fixupx\.com|twittpr\.com)\/(?:#!\/)?(?:i\/web\/|[A-Za-z0-9_]+\/)status(?:es)?\/(\d+)/i);
+    return m ? m[1] : null;
+  }
+
+  // ---- API clients (正規化して { author, text, url, media:[...] } を返す) ----
+  async function fetchFx(id) {
+    const r = await fetch(`https://api.fxtwitter.com/status/${id}`, { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error(`fxtwitter: HTTP ${r.status}`);
+    const j = await r.json();
+    if (j.code !== 200 || !j.tweet) throw new Error(`fxtwitter: ${j.message || 'unknown error'}`);
+    const t = j.tweet;
+    const list = (t.media && (t.media.all || [...(t.media.videos || []), ...(t.media.photos || [])])) || [];
+    const media = list.map(m => {
+      if (m.type === 'video' || m.type === 'gif') {
+        const variants = (m.variants || [])
+          .filter(v => (v.content_type || '').includes('mp4') && v.url)
+          .map(v => ({ url: v.url, bitrate: v.bitrate || 0 }))
+          .sort((a, b) => b.bitrate - a.bitrate);
+        if (!variants.length && m.url) variants.push({ url: m.url, bitrate: 0 });
+        return { type: m.type, thumb: m.thumbnail_url, width: m.width, height: m.height, duration: m.duration, variants };
+      }
+      return { type: 'photo', thumb: m.url, url: m.url, width: m.width, height: m.height };
+    });
+    return { author: t.author?.name, handle: t.author?.screen_name, avatar: t.author?.avatar_url, text: t.text, url: t.url, media };
+  }
+
+  async function fetchVx(id) {
+    const r = await fetch(`https://api.vxtwitter.com/Twitter/status/${id}`);
+    if (!r.ok) throw new Error(`vxtwitter: HTTP ${r.status}`);
+    const j = await r.json();
+    if (!j || j.error) throw new Error(`vxtwitter: ${j?.error || 'unknown error'}`);
+    const media = (j.media_extended || []).map(m => {
+      if (m.type === 'video' || m.type === 'gif') {
+        return { type: m.type, thumb: m.thumbnail_url, width: m.size?.width, height: m.size?.height,
+                 duration: m.duration_millis ? m.duration_millis / 1000 : undefined,
+                 variants: [{ url: m.url, bitrate: 0 }] };
+      }
+      return { type: 'photo', thumb: m.url, url: m.url, width: m.size?.width, height: m.size?.height };
+    });
+    return { author: j.user_name, handle: j.user_screen_name, avatar: j.user_profile_image_url, text: j.text, url: j.tweetURL, media };
+  }
+
+  async function resolve(id) {
+    const errors = [];
+    for (const fn of [fetchFx, fetchVx]) {
+      try { return await fn(id); } catch (e) { errors.push(e.message); }
+    }
+    throw new Error(errors.join(' / '));
+  }
+
+  // ---- 表示 ----
+  const fmtDur = (s) => { if (s == null) return ''; s = Math.round(s); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const fmtBytes = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : (n / 1024).toFixed(0) + ' KB';
+  const resFromUrl = (u) => { const m = u.match(/\/(\d+)x(\d+)\//); return m ? { w: +m[1], h: +m[2] } : null; };
+  const el = (tag, attrs = {}, ...kids) => {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') e.className = v; else if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (v != null) e.setAttribute(k, v);
+    }
+    for (const k of kids) if (k != null) e.append(k);
+    return e;
+  };
+
+  function render(data, id) {
+    tweetEl.replaceChildren(
+      data.avatar ? el('img', { class: 'avatar', src: data.avatar, alt: '' }) : el('div', { class: 'avatar' }),
+      el('div', {},
+        el('div', {}, el('span', { class: 'name' }, data.author || ''), el('span', { class: 'handle' }, data.handle ? '@' + data.handle : '')),
+        el('div', { class: 'text' }, data.text || ''),
+        data.url ? el('div', {}, el('a', { href: data.url, target: '_blank', rel: 'noopener' }, '元の投稿を開く')) : null
+      )
+    );
+    mediaEl.replaceChildren();
+    const videos = data.media.filter(m => m.type !== 'photo');
+    const photos = data.media.filter(m => m.type === 'photo');
+
+    videos.forEach((m, i) => {
+      const variants = el('div', { class: 'variants' });
+      m.variants.forEach((v, vi) => {
+        const res = resFromUrl(v.url) || (m.width && m.height ? { w: m.width, h: m.height } : null);
+        const label = res ? `${res.w}×${res.h}` : (vi === 0 ? '最高画質' : `バリアント ${vi + 1}`);
+        const meta = el('span', { class: 'meta' }, v.bitrate ? `${Math.round(v.bitrate / 1000)} kbps` : '');
+        const prog = el('progress', { max: 100, value: 0 });
+        const fname = `${data.handle || 'x'}_${id}${res ? '_' + res.h + 'p' : ''}${m.variants.length > 1 ? '' : ''}.mp4`;
+        const saveBtn = el('button', { class: 'primary', onclick: () => download(v.url, fname, saveBtn, prog) }, '保存');
+        const openBtn = el('button', { onclick: () => window.open(v.url, '_blank', 'noopener') }, '開く');
+        const row = el('div', { class: 'variant' }, el('span', { class: 'label' }, `${label} `, meta), el('span', { class: 'actions' }, saveBtn, openBtn));
+        variants.append(row, prog);
+      });
+      mediaEl.append(el('div', { class: 'item' },
+        el('div', { class: 'thumb' }, m.thumb ? el('img', { src: m.thumb, alt: '' }) : null, m.duration ? el('span', { class: 'dur' }, fmtDur(m.duration)) : null),
+        el('div', { class: 'info' }, el('div', { class: 'kind' }, `${m.type === 'gif' ? 'GIF' : '動画'} ${i + 1} / ${videos.length}`), variants)
+      ));
+    });
+
+    photos.forEach((m, i) => {
+      const prog = el('progress', { max: 100, value: 0 });
+      const ext = (m.url.match(/format=(\w+)/) || m.url.match(/\.(jpe?g|png|webp)(?:[?:]|$)/i) || [, 'jpg'])[1];
+      const big = m.url.includes('?') ? m.url.replace(/name=\w+/, 'name=orig') : m.url + '?name=orig';
+      const fname = `${data.handle || 'x'}_${id}_${i + 1}.${ext}`;
+      const saveBtn = el('button', { class: 'primary', onclick: () => download(big, fname, saveBtn, prog) }, '保存');
+      const openBtn = el('button', { onclick: () => window.open(big, '_blank', 'noopener') }, '開く');
+      mediaEl.append(el('div', { class: 'item' },
+        el('div', { class: 'thumb' }, el('img', { src: m.url, alt: '' })),
+        el('div', { class: 'info' }, el('div', { class: 'kind' }, `画像 ${i + 1} / ${photos.length}`),
+          el('div', { class: 'variants' }, el('div', { class: 'variant' }, el('span', { class: 'label' }, m.width && m.height ? `${m.width}×${m.height}（原寸）` : '原寸'), el('span', { class: 'actions' }, saveBtn, openBtn)), prog))
+      ));
+    });
+
+    if (!videos.length && !photos.length) mediaEl.append(el('div', { class: 'hint' }, 'この投稿にはメディアが含まれていません。'));
+    resultEl.hidden = false;
+  }
+
+  // ---- ダウンロード ----
+  async function download(url, filename, btn, prog) {
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = '取得中…'; prog.classList.add('show'); prog.removeAttribute('value');
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const total = +r.headers.get('content-length') || 0;
+      const reader = r.body.getReader(); const chunks = []; let got = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value); got += value.length;
+        if (total) { prog.value = Math.round(got / total * 100); btn.textContent = `${prog.value}%`; }
+        else btn.textContent = fmtBytes(got);
+      }
+      const blob = new Blob(chunks, { type: r.headers.get('content-type') || 'application/octet-stream' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = filename; document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+      setStatus(`保存しました: ${filename}`, 'ok');
+    } catch (e) {
+      setStatus(`直接取得に失敗したため新しいタブで開きます（${e.message}）。右クリックで保存してください。`, 'error');
+      window.open(url, '_blank', 'noopener');
+    } finally {
+      btn.disabled = false; btn.textContent = orig; prog.classList.remove('show'); prog.value = 0;
+    }
+  }
+
+  // ---- イベント ----
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const id = extractId(urlInput.value);
+    if (!id) { setStatus('X の投稿 URL（…/status/数字）を入力してください。', 'error'); return; }
+    goBtn.disabled = true; resultEl.hidden = true; setStatus('解析中…');
+    try {
+      const data = await resolve(id);
+      render(data, id);
+      const n = data.media.filter(m => m.type !== 'photo').length;
+      setStatus(n ? `動画 ${n} 件を見つけました。` : '動画は見つかりませんでした。', n ? 'ok' : '');
+    } catch (e) {
+      setStatus(`取得できませんでした: ${e.message}`, 'error');
+    } finally { goBtn.disabled = false; }
+  });
+
+  $('paste').addEventListener('click', async () => {
+    try { urlInput.value = await navigator.clipboard.readText(); form.requestSubmit(); }
+    catch { setStatus('クリップボードを読めませんでした。手動で貼り付けてください。', 'error'); urlInput.focus(); }
+  });
+
+  // ?url= or ?id= で起動時に自動解析
+  const q = new URLSearchParams(location.search);
+  const init = q.get('url') || q.get('id');
+  if (init) { urlInput.value = init; form.requestSubmit(); }
+})();
+</script>
+</body>
+</html>
