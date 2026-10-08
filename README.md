@@ -2,11 +2,11 @@
 
 X（旧 Twitter）の投稿 URL を貼り付けると、含まれる動画・GIF・画像を解析してブラウザから保存できる、単一 HTML ファイルのツールです。
 
-サーバーやビルドは不要で、`x-video-downloader.html` をブラウザで開くだけで動作します。
+サーバーやビルドは不要で、`tw-video-downloader.html` をブラウザで開くだけで動作します。
 
 ## 使い方
 
-1. `x-video-downloader.html` をブラウザで開く
+1. `tw-video-downloader.html` をブラウザで開く
 2. X の投稿 URL（例: `https://x.com/user/status/1234567890`）を入力欄に貼り付ける
    - 「貼り付け」ボタンでクリップボードから入力して即解析することもできます
 3. 「解析」を押す
@@ -17,8 +17,8 @@ X（旧 Twitter）の投稿 URL を貼り付けると、含まれる動画・GIF
 クエリに `?url=` または `?id=` を付けて開くと、起動時に自動で解析します。
 
 ```
-x-video-downloader.html?url=https://x.com/user/status/1234567890
-x-video-downloader.html?id=1234567890
+tw-video-downloader.html?url=https://x.com/user/status/1234567890
+tw-video-downloader.html?id=1234567890
 ```
 
 ## 対応する入力
@@ -60,7 +60,7 @@ x-video-downloader.html?id=1234567890
 ```
 html_x/
 ├── README.md
-└── x-video-downloader.html   # HTML / CSS / JavaScript をすべて含む単一ファイル
+└── tw-video-downloader.html   # HTML / CSS / JavaScript をすべて含む単一ファイル
 ```
 
 ## 注意
