@@ -1,4 +1,4 @@
-# X Video Downloader
+# TW Video Downloader
 
 X（旧 Twitter）の投稿 URL を貼り付けると、含まれる動画・GIF・画像を解析してブラウザから保存できる、単一 HTML ファイルのツールです。
 
