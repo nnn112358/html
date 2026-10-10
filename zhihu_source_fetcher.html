@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ソース取得ツール</title>
+<style>
+  :root { --bg:#f7f7f8; --fg:#1d1d1f; --card:#fff; --line:#d0d0d6; --accent:#2563eb; --muted:#666; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16171a; --fg:#e6e6e6; --card:#1f2024; --line:#3a3b40; --accent:#5b8dff; --muted:#999; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg);
+         font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 1.3rem; margin: 0 0 12px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  input[type=text] { flex:1 1 400px; min-width:0; padding:8px 10px; font-size:14px;
+         border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); }
+  button { padding:8px 14px; font-size:14px; border:0; border-radius:6px; cursor:pointer;
+           background:var(--accent); color:#fff; }
+  button.sub { background:transparent; color:var(--fg); border:1px solid var(--line); }
+  button:disabled { opacity:.5; cursor:default; }
+  details { margin-bottom:8px; font-size:13px; color:var(--muted); }
+  #status { font-size:13px; color:var(--muted); min-height:1.4em; margin:4px 0 8px; }
+  textarea { width:100%; height:65vh; padding:10px; font:12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+             border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg);
+             white-space:pre; overflow:auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>URL → ページソース取得・保存</h1>
+  <div class="row">
+    <input id="url" type="text" placeholder="https://zhuanlan.zhihu.com/p/2050708037741066093 （view-source: 付きでも可）">
+    <button id="go">取得</button>
+    <button id="save" class="sub" disabled>保存</button>
+    <button id="dl" class="sub" disabled>ダウンロード</button>
+    <button id="copy" class="sub" disabled>コピー</button>
+  </div>
+  <div class="row">
+    <input id="dir" type="text" placeholder="保存ディレクトリ（例: ~/Desktop/invest/01_著者別/<著者>/sources）">
+    <input id="fname" type="text" placeholder="ファイル名（空なら自動）" style="flex:0 1 300px">
+  </div>
+  <details>
+    <summary>オプション（Cookie：ログインが必要なサイト用 / server.py 経由時のみ有効）</summary>
+    <div class="row" style="margin-top:6px">
+      <input id="cookie" type="text" placeholder="例: z_c0=xxxx; d_c0=yyyy">
+    </div>
+  </details>
+  <div id="status"></div>
+  <textarea id="out" spellcheck="false" placeholder="ここにソースが表示されます"></textarea>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let lastUrl = "";
+
+function normalize(u) {
+  u = u.trim().replace(/^view-source:/i, "");
+  if (u && !/^https?:\/\//i.test(u)) u = "https://" + u;
+  return u;
+}
+
+// 取得方法: 1) 同梱の server.py（推奨・Cookie対応） 2) 公開CORSプロキシ
+const viaLocal = location.protocol.startsWith("http");
+function fetchWithTimeout(u, ms = 20000) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  return fetch(u, { signal: ac.signal }).finally(() => clearTimeout(t));
+}
+
+// server.py 経由なら server.py のみ使用（失敗時もプロキシに回さず結果を表示）
+async function fetchSource(url, cookie) {
+  if (viaLocal) {
+    $("status").textContent = "取得中… (server.py) ※拒否された場合はブラウザが開きます（最大90秒）";
+    const r = await fetchWithTimeout("/fetch?url=" + encodeURIComponent(url) +
+                                     (cookie ? "&cookie=" + encodeURIComponent(cookie) : ""), 90000);
+    return { text: await r.text(), name: "server.py", status: r.status, ok: r.ok };
+  }
+  const tries = [
+    ["corsproxy.io", "https://corsproxy.io/?url=" + encodeURIComponent(url)],
+    ["allorigins",   "https://api.allorigins.win/raw?url=" + encodeURIComponent(url)],
+  ];
+  const errors = [];
+  for (const [name, u] of tries) {
+    try {
+      $("status").textContent = `取得中… (${name})`;
+      const r = await fetchWithTimeout(u);
+      const text = await r.text();
+      if (!r.ok) { errors.push(`${name}: HTTP ${r.status}`); continue; }
+      return { text, name, status: r.status, ok: true };
+    } catch (e) { errors.push(`${name}: ${e.name === "AbortError" ? "タイムアウト" : e.message}`); }
+  }
+  throw new Error(errors.join(" / "));
+}
+
+function fileName(url) {
+  const u = new URL(url);
+  const base = (u.hostname + u.pathname).replace(/[^\w.-]+/g, "_").replace(/_+$/, "");
+  return (base || "page") + ".html";
+}
+
+$("go").onclick = async () => {
+  const url = normalize($("url").value);
+  if (!url) return;
+  $("go").disabled = true; $("save").disabled = $("dl").disabled = $("copy").disabled = true;
+  try {
+    const { text, name, status, ok } = await fetchSource(url, $("cookie").value.trim());
+    $("out").value = text; lastUrl = url;
+    $("status").textContent = ok
+      ? `取得完了 (${name}) ${text.length.toLocaleString()} 文字`
+      : `HTTP ${status} (${name}) — サイトに拒否されました。` +
+        (status === 403 ? "オプションにログイン済みブラウザの Cookie を入れて再取得してください。" : "");
+    $("save").disabled = $("dl").disabled = $("copy").disabled = false;
+  } catch (e) {
+    $("status").textContent = "取得失敗: " + (e.name === "AbortError" ? "タイムアウト" : e.message);
+  } finally { $("go").disabled = false; }
+};
+
+// 保存ディレクトリを記憶
+try { $("dir").value = localStorage.getItem("saveDir") || "~/Desktop/invest/01_著者別/<著者>/sources"; } catch {}
+
+$("save").onclick = async () => {
+  if (!viaLocal) { $("status").textContent = "ディレクトリ保存は server.py 経由でのみ可能です（ダウンロードを使ってください）"; return; }
+  const dir = $("dir").value.trim();
+  const name = $("fname").value.trim() || fileName(lastUrl);
+  try { localStorage.setItem("saveDir", dir); } catch {}
+  try {
+    const r = await fetch("/save", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dir, name, content: $("out").value }) });
+    const t = await r.text();
+    $("status").textContent = r.ok ? "保存しました: " + t : "保存失敗: " + t;
+  } catch (e) { $("status").textContent = "保存失敗: " + e.message; }
+};
+
+$("dl").onclick = () => {
+  const blob = new Blob([$("out").value], { type: "text/html;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = $("fname").value.trim() || fileName(lastUrl);
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+$("copy").onclick = async () => {
+  await navigator.clipboard.writeText($("out").value);
+  $("status").textContent = "クリップボードにコピーしました";
+};
+
+$("url").addEventListener("keydown", e => { if (e.key === "Enter") $("go").click(); });
+</script>
+</body>
+</html>
